@@ -758,7 +758,15 @@ src/f2c/
     ├── ui_readback.py      read the screen back
     └── db.py               read Fakturama's own data files (HSQLDB, parsed)
 
-scripts/                    snapshot · reset · capture_demo · record_screen · annotate · build_*
+scripts/
+├── snapshot_workspace.py   capture a pristine Fakturama workspace
+├── reset_workspace.py      restore it before a run
+├── capture_demo.py         drive the front end, record it, capture the screens
+├── record_screen.py        screen recorder, time-lapse and GIF export
+├── annotate.py             ribbon + highlight boxes on a run screenshot
+├── make_*.py               the generated diagrams and the README banner
+├── docx_style.py           shared python-docx styling
+└── build_*.py              the three Word documents
 docs/                       diagrams/ · screenshots/ · recording/
 tests/                      155 tests, no Fakturama needed
 ```
