@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+out/
+fixtures/workspace_pristine.zip
+*.jar
+.pytest_cache/
+*.avi
+~$*.docx
+
+# The full-length recording is large; the short one is the deliverable.
+docs/recording/*.mp4
+!docs/recording/*-short.mp4
+out/gui-geometry*.json

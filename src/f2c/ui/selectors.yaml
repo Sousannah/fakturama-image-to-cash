@@ -1,0 +1,602 @@
+# ---------------------------------------------------------------------------
+# Selector registry  -  CALIBRATED against Fakturama 2.2.0 (Windows x64)
+#
+# One logical control -> an ORDERED list of grounding strategies. The resolver
+# tries them top to bottom and takes the first hit (see resolver.py).
+#
+# Everything here was read off the live accessibility tree with
+#     f2c inspect --dump out/tree.txt
+# not guessed. What that recon established about Fakturama 2.2.0:
+#
+#   * The shell is Eclipse/SWT: every composite is class `SWT_Window0` with no
+#     AutomationId worth using, so `class_name` is useless as a discriminator.
+#   * Toolbar buttons DO carry real names ("Create: New Order", "Save the
+#     current contents"). Tier 1 works there.
+#   * Several Edits carry names too ("Cust.Ref.", "Discount", "Total", "VAT",
+#     "Total Gross"), which is better than anchoring - use it where it exists.
+#   * The left navigation is NOT a Tree. It is a Pane called "Navigation View"
+#     holding plain `Text` controls. TreeItem selectors would never match.
+#   * The record selectors beside "Addresses" and "Items" are unnamed `Image`
+#     controls stacked vertically inside a small unnamed Pane. The UPPER one
+#     selects an existing record, the LOWER one creates a new record
+#     (spec 2.1 / 3.2). `contains_text` + `pick: topmost` expresses that
+#     without pixels - the icon templates remain as a fallback.
+#   * The item grid and the Documents list are custom-drawn canvases with zero
+#     accessibility children. `leaf: true` + `pick: largest` finds them; their
+#     CONTENT is only reachable through tier-4 OCR.
+#
+# Rules enforced by tests/:
+#   * every strategy declares a tier of uia | anchor | template | ocr | hotkey
+#   * no strategy may contain an absolute screen coordinate
+#   * every logical name referenced from src/f2c/flow/** must exist here
+# ---------------------------------------------------------------------------
+
+# ===== scopes ==============================================================
+main_toolbar:
+  - {tier: uia, type: Pane, class_name: ReBarWindow32, scope: app}
+  - {tier: uia, type: ToolBar, scope: app, pick: topmost}
+
+left_panel:
+  - {tier: uia, type: Pane, name: "Navigation View", scope: app}
+  - {tier: uia, type: Pane, scope: app, pick: leftmost}
+
+editor_area:
+  - {tier: uia, type: Pane, name: "Fakturama Perspective", scope: app}
+
+# The open document editor. Fakturama names the editor Pane after the document,
+# and a freshly opened one is always "New Order" / "New Invoice".
+# Saving RENAMES the editor: "New Order" becomes the document number, e.g.
+# "PO000001". So the name that identifies the Order stops matching at the exact
+# moment the Order starts to exist, and stage 4 loses the editor it has been
+# working in all along. `{order_number}` is the number read off the form in
+# step 1.4 (see `Ctx.remember`); the strategy is skipped while it is unknown.
+# A saved document editor is RENAMED to its document number, so "{order_number}"
+# - read from the form in spec 1.4 - is what identifies the Order from the save
+# onwards. See `Ctx.remember`.
+order_editor:
+  - {tier: uia, type: Pane, name: "New Order", scope: app}
+  - {tier: uia, type: Pane, name: "{order_number}", scope: app}
+  - {tier: uia, type: Pane, name_contains: "Order", name_excludes: ["address"], scope: app, pick: largest}
+
+# `name_excludes` matters here: the ORDER editor contains tabs called "Invoice
+# address" and "Delivery address", and a bare `name_contains: "Invoice"` matched
+# one of them - after which the flow clicked the Order's address tab instead of
+# the follow-up Invoice action.
+invoice_editor:
+  - {tier: uia, type: Pane, name: "New Invoice", scope: app}
+  - {tier: uia, type: Pane, name: "{invoice_number}", scope: app}
+  - {tier: uia, type: Pane, name_contains: "Invoice", name_excludes: ["address"], scope: app, pick: largest}
+
+# The Contact editor's pane is called "New Debtor" (the spec calls it that too);
+# "New Contact" is only the navigation link that opens it.
+contact_editor:
+  - {tier: uia, type: Pane, name: "New Debtor", scope: app}
+  - {tier: uia, type: Pane, name_contains: "Debtor", scope: app, pick: largest}
+  - {tier: uia, type: Pane, name_contains: "Contact", scope: app, pick: largest}
+
+product_editor:
+  - {tier: uia, type: Pane, name: "New product", scope: app}
+  - {tier: uia, type: Pane, name_contains: "product", scope: app, pick: largest}
+
+# A list "part" is a Tab holding BOTH the list Pane and the little toolbar with
+# the create/delete buttons. The toolbar is a sibling of the Pane, not a child,
+# so anything targeting it must be scoped to the Tab.
+vat_part:
+  - {tier: uia, type: Tab, name: "VATs", scope: app}
+  - {tier: uia, type: Tab, name_contains: "VAT", scope: app}
+
+vat_list:
+  - {tier: uia, type: Pane, name: "VATs", scope: app}
+  - {tier: uia, type: Pane, name_contains: "VAT", scope: app, pick: largest}
+
+payment_part:
+  - {tier: uia, type: Tab, name: "terms of payment", scope: app}
+  - {tier: uia, type: Tab, name_contains: "payment", scope: app}
+
+payment_list:
+  - {tier: uia, type: Pane, name: "terms of payment", scope: app}
+  - {tier: uia, type: Pane, name_contains: "payment", scope: app, pick: largest}
+
+documents_list:
+  - {tier: uia, type: Pane, name: "Documents", scope: app, pick: largest}
+
+# The Documents list shares the lower stack with Debtors, VATs and terms of
+# payment, and only the FRONT one of those exists as a named Pane. Clicking
+# "Documents" in the left navigation is supposed to bring it forward and
+# usually does; when it does not, the list cannot be found at all and the
+# verification step fails while looking at the Debtors list. Activating this
+# tab is the reliable way back - the same problem, and the same answer, as the
+# parked editors.
+documents.tab:
+  - {tier: uia, type: TabItem, name: "Documents", scope: app}
+  - {tier: uia, type: TabItem, name_contains: "Document", scope: app}
+
+# ===== toolbar =============================================================
+toolbar.order_new:                       # spec 1.3
+  - {tier: uia, type: Button, name: "Create: New Order", scope: main_toolbar}
+  - {tier: uia, type: Button, name_contains: "New Order", scope: main_toolbar}
+  - {tier: template, image: "icons/toolbar_order.png", scope: main_toolbar, pick: best}
+
+toolbar.save:                            # spec 3.11 / 4.4 / 5.4
+  - {tier: uia, type: Button, name: "Save the current contents", scope: main_toolbar}
+  - {tier: uia, type: Button, name_contains: "Save", scope: main_toolbar}
+  - {tier: hotkey, keys: "{Ctrl}s"}
+
+# ===== left navigation (plain Text controls, not a tree) ===================
+nav.new_contact:                         # spec 2.5
+  - {tier: uia, type: Text, name: "New Contact", scope: left_panel}
+  - {tier: uia, type: Text, name_contains: "New Contact", scope: left_panel}
+  - {tier: uia, type: SplitButton, name: "Create a new contact", scope: main_toolbar}
+
+# The toolbar Button first, deliberately. The "New product" entry in the
+# navigation panel is a plain Text label, and clicking it intermittently does
+# nothing at all - the only evidence is an Eclipse error view appearing and no
+# editor opening. The toolbar control is a real Button with an Invoke pattern
+# and opens the editor every time.
+nav.new_product:                         # spec 3.7
+  - {tier: uia, type: Button, name: "Create a new product", scope: main_toolbar}
+  - {tier: uia, type: Text, name: "New product", scope: left_panel}
+  - {tier: uia, type: Text, name_contains: "New product", scope: left_panel}
+
+nav.data_documents:                      # spec 4.5 / 5.5
+  - {tier: uia, type: Text, name: "Documents", scope: left_panel}
+  - {tier: ocr, text: "Documents", scope: left_panel, pick: topmost}
+
+nav.data_terms_of_payment:               # spec 2.10.1
+  - {tier: uia, type: Text, name: "terms of payment", scope: left_panel}
+  - {tier: uia, type: Text, name_contains: "payment", scope: left_panel}
+
+nav.data_vats:                           # spec 3.4
+  - {tier: uia, type: Text, name: "VATs", scope: left_panel}
+  - {tier: uia, type: Text, name_contains: "VAT", scope: left_panel}
+
+# The editor tab itself. Fakturama prefixes a dirty editor with "*", so the
+# label is "*New Order" once anything has been typed - match on a substring.
+# Needed because every master-data detour (new Debtor, new VAT, new Product)
+# opens its own editor on top, and the spec requires returning to the SAME
+# still-open Order afterwards.
+order.tab:
+  - {tier: uia, type: TabItem, name_contains: "New Order", scope: app}
+  - {tier: uia, type: TabItem, name: "{order_number}", scope: app}
+  - {tier: uia, type: TabItem, name_contains: "Order", name_excludes: ["address"], scope: app}
+
+invoice.tab:
+  - {tier: uia, type: TabItem, name_contains: "New Invoice", scope: app}
+  - {tier: uia, type: TabItem, name: "{invoice_number}", scope: app}
+  - {tier: uia, type: TabItem, name_contains: "Invoice", name_excludes: ["address"], scope: app}
+
+# The Debtor editor's tab, so the flow can come back to it after the detour to
+# terms of payment (spec 2.10 keeps the Debtor editor open while the payment
+# method is created).
+contact.tab:
+  - {tier: uia, type: TabItem, name_contains: "New Debtor", scope: app}
+  - {tier: uia, type: TabItem, name_contains: "Debtor", scope: app}
+
+# The Product editor's own tab. Needed because an editor that opens BEHIND the
+# document already in front is parked off-screen by Eclipse, and its controls
+# still answer - so the automation has to be able to bring it forward rather
+# than open a second one (see flow/context.py open_editor).
+product.tab:
+  - {tier: uia, type: TabItem, name_contains: "New product", scope: app}
+  - {tier: uia, type: TabItem, name_contains: "product", scope: app}
+
+# ===== order editor: header ================================================
+order.no_field:                          # spec 1.4 - read only, never written
+  - {tier: anchor, anchor_text: "No.", direction: right, type: Edit, scope: order_editor, anchor_exact: true}
+
+order.date_field:                        # spec 1.5
+  - {tier: anchor, anchor_text: "Date", direction: right, type: Edit, scope: order_editor, anchor_exact: true}
+
+order.custref_field:                     # spec 1.6  (this Edit is named)
+  - {tier: uia, type: Edit, name: "Cust.Ref.", scope: order_editor}
+  - {tier: anchor, anchor_text: "Cust.Ref.", direction: right, type: Edit, scope: order_editor}
+
+# spec 1.7 - the document price mode is an UNNAMED ComboBox in the header row,
+# beside Date, offering Net / Gross. It is the topmost ComboBox in the editor;
+# the named "VAT" ComboBox (With VAT / Without VAT) sits below it.
+order.price_mode_net:
+  - {tier: uia, type: ComboBox, scope: order_editor, pick: topmost}
+  - {tier: anchor, anchor_text: "Date", direction: right, type: ComboBox, scope: order_editor}
+
+order.vat_mode_with:                     # spec 1.7 - keep VAT as "With VAT"
+  - {tier: uia, type: ComboBox, name: "VAT", scope: order_editor}
+  - {tier: anchor, anchor_text: "VAT", direction: right, type: ComboBox, scope: order_editor}
+
+# ===== order editor: addresses =============================================
+# The unnamed composite holding the "Addresses" label and its two icon Images.
+order.addresses_group:
+  - {tier: uia, type: Pane, contains_text: "Addresses", contains_depth: 1, scope: order_editor, pick: smallest}
+
+order.address_select_icon:               # spec 2.1 - the UPPER icon
+  - {tier: uia, type: Image, scope: order.addresses_group, pick: topmost}
+  - {tier: template, image: "icons/select_contact.png", scope: order.addresses_group, pick: topmost, threshold: 0.86}
+
+order.address_new_icon:                  # spec 2.1 - the LOWER green +, never clicked
+  - {tier: uia, type: Image, scope: order.addresses_group, pick: bottommost}
+  - {tier: template, image: "icons/new_green_plus.png", scope: order.addresses_group, pick: bottommost, threshold: 0.86}
+
+order.invoice_address_text:              # spec 2.4 / 2.13
+  - {tier: uia, type: Edit, scope: order.invoice_address_tab, pick: largest}
+  - {tier: anchor, anchor_text: "Invoice address", direction: below, type: Edit, scope: order_editor}
+
+order.invoice_address_tab:
+  - {tier: uia, type: Tab, name: "Invoice address", scope: order_editor}
+  - {tier: uia, type: Tab, name_contains: "address", scope: order_editor, pick: topmost}
+
+order.delivery_address_text:
+  - {tier: uia, type: Edit, scope: order.delivery_address_tab, pick: largest}
+  - {tier: anchor, anchor_text: "Delivery address", direction: below, type: Edit, scope: order_editor}
+
+order.delivery_address_tab:
+  - {tier: uia, type: Tab, name: "Delivery address", scope: order_editor}
+  - {tier: uia, type: TabItem, name_contains: "Delivery", scope: order_editor}
+
+# ===== order editor: items =================================================
+order.items_group:
+  - {tier: uia, type: Pane, contains_text: "Items", contains_depth: 1, scope: order_editor, pick: smallest}
+
+order_items_region:
+  - {tier: uia, type: Pane, contains_text: "Items", contains_depth: 1, scope: order_editor, pick: smallest}
+
+order.item_select_icon:                  # spec 3.2 - the UPPER icon
+  - {tier: uia, type: Image, scope: order.items_group, pick: topmost}
+  - {tier: template, image: "icons/select_product.png", scope: order.items_group, pick: topmost, threshold: 0.86}
+
+order.item_new_icon:                     # spec 3.2 - the green +, never clicked
+  - {tier: uia, type: Image, scope: order.items_group, pick: bottommost}
+  - {tier: template, image: "icons/new_green_plus.png", scope: order.items_group, pick: bottommost, threshold: 0.86}
+
+# The NatTable canvas: the largest childless Pane in the editor.
+order.items_grid:
+  - {tier: uia, type: Pane, leaf: true, scope: order_editor, pick: largest}
+
+# ===== order editor: totals / footer =======================================
+order.discount_field:                    # spec 4.2 - kept at 0%
+  - {tier: uia, type: Edit, name: "Discount", scope: order_editor}
+  - {tier: anchor, anchor_text: "Discount", direction: right, type: Edit, scope: order_editor, anchor_exact: true}
+
+order.shipping_combo:                    # spec 4.2
+  - {tier: uia, type: ComboBox, name: "Shipping", scope: order_editor}
+  - {tier: anchor, anchor_text: "Shipping", direction: right, type: ComboBox, scope: order_editor}
+
+# The three footer totals. `enabled_only: false` is load-bearing: they are
+# computed, read-only Edits, and Fakturama reports them as DISABLED. The
+# resolver skips disabled controls by default - a sensible rule for anything
+# you intend to click or type into, and exactly wrong for a field whose whole
+# purpose is to be read. Without this the totals resolve to nothing and stage 4
+# stops, unable to confirm figures that are sitting right there on screen.
+order.total_net_label:                   # spec 4.3
+  - {tier: uia, type: Edit, name: "Total Net", scope: order_editor, enabled_only: false}
+  - {tier: anchor, anchor_text: "Total Net", direction: right, type: Edit, scope: order_editor, enabled_only: false}
+
+order.total_vat_label:
+  # scoped below the item grid: "VAT" also names the With VAT / Without VAT
+  # combo in the header, and the Text label beside the footer figure
+  - {tier: uia, type: Edit, name: "VAT", scope: order_editor, enabled_only: false, pick: bottommost}
+  - {tier: anchor, anchor_text: "VAT", direction: right, type: Edit, scope: order_editor, anchor_exact: true, enabled_only: false}
+
+order.total_gross_label:
+  - {tier: uia, type: Edit, name: "Total", scope: order_editor, enabled_only: false}
+  - {tier: anchor, anchor_text: "Total", direction: right, type: Edit, scope: order_editor, anchor_exact: true, enabled_only: false}
+
+# ===== order editor: follow-up =============================================
+# The area only exists once the document has been SAVED, and by then the editor
+# has been renamed from "New Order" to its document number - which is why
+# `order_editor` carries the "{order_number}" strategy. The composite itself is
+# drawn by the editor and is not reliably a named Group, so the last two
+# strategies find it by the text it contains instead of by its own name.
+order_followup_area:                     # spec 4.6
+  - {tier: uia, type: Group, name: "Create a follow-up document", scope: order_editor}
+  - {tier: uia, type: Group, name_contains: "follow-up", scope: order_editor}
+  - {tier: uia, type: Pane, contains_text: "follow-up", contains_depth: 2, scope: order_editor, pick: smallest}
+  - {tier: uia, type: Pane, contains_text: "follow-up", contains_depth: 4, scope: order_editor, pick: smallest}
+
+order.followup_invoice:                  # NOT the toolbar Invoice button
+  - {tier: uia, type: Button, name: "Invoice", scope: order_followup_area}
+  - {tier: uia, type: Hyperlink, name: "Invoice", scope: order_followup_area}
+  - {tier: uia, type: Text, name: "Invoice", scope: order_followup_area}
+  - {tier: ocr, text: "Invoice", scope: order_followup_area, pick: topmost}
+
+# ===== dialog: Select the address ==========================================
+# SWT dialogs are child shells of the main window (class #32770), NOT siblings
+# on the desktop. Scoping to `app` also keeps the search off the other
+# applications' (huge) accessibility trees.
+dlg.address.window:                      # spec 2.2
+  - {tier: uia, type: Window, name: "Select the address", scope: app, depth: 3}
+  - {tier: uia, type: Window, name_contains: "address", scope: app, depth: 3}
+
+dlg.address.search_field:
+  - {tier: anchor, anchor_text: "Search", direction: right, type: Edit, scope: dlg.address.window}
+  - {tier: uia, type: Edit, scope: dlg.address.window, pick: topmost}
+
+# The result list is a custom-drawn canvas owning only a scrollbar.
+dlg.address.table:
+  - {tier: uia, type: Table, scope: dlg.address.window, pick: largest}
+  - {tier: uia, type: Pane, leaf: true, scope: dlg.address.window, pick: largest}
+  # last resort: the biggest pane in the dialog. The canvas occasionally gains a
+  # child (a scrollbar appears once the list has content), which disqualifies it
+  # from the `leaf` rule above even though it is still the results area.
+  - {tier: uia, type: Pane, scope: dlg.address.window, pick: largest}
+
+dlg.address.ok:
+  - {tier: uia, type: Button, name: "OK", scope: dlg.address.window}
+  - {tier: uia, type: Button, name_contains: "OK", scope: dlg.address.window}
+
+dlg.address.cancel:
+  - {tier: uia, type: Button, name: "Cancel", scope: dlg.address.window}
+  - {tier: uia, type: Button, name_contains: "Cancel", scope: dlg.address.window}
+
+# ===== dialog: Select a product ============================================
+dlg.product.window:                      # spec 3.3
+  - {tier: uia, type: Window, name: "Select a product", scope: app, depth: 3}
+  - {tier: uia, type: Window, name_contains: "product", scope: app, depth: 3}
+
+dlg.product.search_field:
+  - {tier: anchor, anchor_text: "Search", direction: right, type: Edit, scope: dlg.product.window}
+  - {tier: uia, type: Edit, scope: dlg.product.window, pick: topmost}
+
+dlg.product.table:
+  - {tier: uia, type: Table, scope: dlg.product.window, pick: largest}
+  - {tier: uia, type: Pane, leaf: true, scope: dlg.product.window, pick: largest}
+  # last resort: the biggest pane in the dialog. The canvas occasionally gains a
+  # child (a scrollbar appears once the list has content), which disqualifies it
+  # from the `leaf` rule above even though it is still the results area.
+  - {tier: uia, type: Pane, scope: dlg.product.window, pick: largest}
+
+dlg.product.ok:
+  - {tier: uia, type: Button, name: "OK", scope: dlg.product.window}
+
+dlg.product.cancel:
+  - {tier: uia, type: Button, name: "Cancel", scope: dlg.product.window}
+
+# ===== contact (debtor) editor =============================================
+contact.customer_id:                     # spec 2.6 - left unchanged
+  - {tier: anchor, anchor_text: "Customer ID", direction: right, type: Edit, scope: contact_editor, anchor_exact: true}
+
+contact.company:
+  - {tier: anchor, anchor_text: "Company", direction: right, type: Edit, scope: contact_editor}
+
+# "First Name Last Name" is ONE caption in front of TWO Edits, so the anchor
+# tier has to say which of them it means.
+contact.first_name:
+  - {tier: anchor, anchor_text: "First Name Last Name", direction: right, type: Edit, scope: contact_editor, match_index: 0}
+  - {tier: anchor, anchor_text: "First Name", direction: right, type: Edit, scope: contact_editor}
+
+contact.last_name:
+  - {tier: anchor, anchor_text: "First Name Last Name", direction: right, type: Edit, scope: contact_editor, match_index: 1}
+  - {tier: anchor, anchor_text: "Last Name", direction: right, type: Edit, scope: contact_editor}
+
+contact.salutation_combo:                # spec 2.6 - leave as "---"
+  - {tier: uia, type: ComboBox, name: "Salutation", scope: contact_editor}
+  - {tier: anchor, anchor_text: "Salutation", direction: right, type: ComboBox, scope: contact_editor}
+
+contact.tab_addresses:
+  - {tier: uia, type: TabItem, name_contains: "Address", scope: contact_editor}
+  - {tier: ocr, text: "Addresses", scope: contact_editor, pick: topmost}
+
+contact.tab_misc:                        # spec 2.9
+  - {tier: uia, type: TabItem, name_contains: "Miscellaneous", scope: contact_editor}
+  - {tier: ocr, text: "Miscellaneous", scope: contact_editor, pick: topmost}
+
+# Fakturama 2.2.0 has no separate Payment tab on the Debtor editor: the payment
+# method lives on the Miscellaneous tab alongside alias and Net/Gross.
+contact.tab_payment:                     # spec 2.10
+  - {tier: uia, type: TabItem, name_contains: "Payment", scope: contact_editor}
+  - {tier: uia, type: TabItem, name: "Miscellaneous", scope: contact_editor}
+  - {tier: ocr, text: "Miscellaneous", scope: contact_editor, pick: topmost}
+
+contact.addr.street:                     # spec 2.7
+  - {tier: anchor, anchor_text: "Street", direction: right, type: Edit, scope: contact_editor, anchor_exact: true}
+
+# likewise "ZIP - City" fronts two Edits
+contact.addr.zip:
+  - {tier: anchor, anchor_text: "ZIP - City", direction: right, type: Edit, scope: contact_editor, match_index: 0}
+  - {tier: anchor, anchor_text: "ZIP", direction: right, type: Edit, scope: contact_editor}
+
+contact.addr.city:
+  - {tier: anchor, anchor_text: "ZIP - City", direction: right, type: Edit, scope: contact_editor, match_index: 1}
+  - {tier: anchor, anchor_text: "City", direction: right, type: Edit, scope: contact_editor}
+
+contact.addr.country:
+  - {tier: anchor, anchor_text: "Country", direction: right, type: ComboBox, scope: contact_editor, anchor_exact: true}
+  - {tier: anchor, anchor_text: "Country", direction: right, type: Edit, scope: contact_editor, anchor_exact: true}
+
+contact.addr.email:
+  - {tier: anchor, anchor_text: "E-Mail", direction: right, type: Edit, scope: contact_editor, anchor_exact: true}
+
+contact.addr.phone:
+  - {tier: anchor, anchor_text: "Telephone", direction: right, type: Edit, scope: contact_editor, anchor_exact: true}
+
+# spec 2.8 - Fakturama 2.2.0 does not offer two role checkboxes. The Main
+# address carries an "address type" control at the foot of the form which holds
+# the roles (Invoice address / Delivery address). Both logical names resolve to
+# it; the flow selects the roles it needs and verifies the result.
+contact.addr.type_control:
+  - {tier: anchor, anchor_text: "address type", direction: right, type: ComboBox, scope: contact_editor}
+  - {tier: anchor, anchor_text: "address type", direction: right, type: Edit, scope: contact_editor}
+  - {tier: anchor, anchor_text: "address type", direction: right, type: List, scope: contact_editor}
+
+contact.addr.role_invoice:               # spec 2.8
+  - {tier: uia, type: CheckBox, name_contains: "Invoice address", scope: contact_editor}
+  - {tier: anchor, anchor_text: "address type", direction: right, type: ComboBox, scope: contact_editor}
+
+contact.addr.role_delivery:              # spec 2.8
+  - {tier: uia, type: CheckBox, name_contains: "Delivery address", scope: contact_editor}
+  - {tier: anchor, anchor_text: "address type", direction: right, type: ComboBox, scope: contact_editor}
+
+contact.misc.alias:                      # spec 2.9
+  - {tier: uia, type: Edit, name_contains: "Alias", scope: contact_editor}
+  - {tier: anchor, anchor_text: "Alias", direction: right, type: Edit, scope: contact_editor}
+
+contact.misc.discount:
+  - {tier: uia, type: Edit, name: "Discount", scope: contact_editor}
+  - {tier: anchor, anchor_text: "Discount", direction: right, type: Edit, scope: contact_editor}
+
+contact.misc.net_gross:                  # spec 2.9 - set to Net
+  - {tier: uia, type: ComboBox, name_contains: "Net", scope: contact_editor}
+  - {tier: anchor, anchor_text: "Net or Gross", direction: right, type: ComboBox, scope: contact_editor}
+  - {tier: uia, type: RadioButton, name: "Net", scope: contact_editor}
+
+contact.payment.method_combo:            # spec 2.10
+  - {tier: uia, type: ComboBox, name_contains: "Payment", scope: contact_editor}
+  - {tier: anchor, anchor_text: "Payment", direction: right, type: ComboBox, scope: contact_editor}
+
+# ===== Data > terms of payment ============================================
+payment.list_search:                     # spec 2.10.1
+  - {tier: anchor, anchor_text: "Search", direction: right, type: Edit, scope: payment_part}
+  - {tier: uia, type: Edit, scope: payment_part, pick: topmost}
+
+payment.list_table:
+  - {tier: uia, type: Table, scope: payment_list, pick: largest}
+  - {tier: uia, type: Pane, leaf: true, scope: payment_list, pick: largest}
+
+payment.list_new:                        # spec 2.10.2 - green + upper-right
+  - {tier: uia, type: Button, name_contains: "Create", scope: payment_part, pick: leftmost}
+  - {tier: uia, type: Button, name_contains: "New", scope: payment_part, pick: leftmost}
+  - {tier: uia, type: Button, scope: payment_part, pick: leftmost}
+  - {tier: template, image: "icons/new_green_plus.png", scope: payment_part, pick: topmost, threshold: 0.86}
+
+payment_editor:
+  - {tier: uia, type: Pane, name_contains: "Payment", scope: app, pick: largest}
+  - {tier: uia, type: Pane, name_contains: "payment", scope: app, pick: largest}
+
+payment.name:                            # spec 2.10.3
+  - {tier: anchor, anchor_text: "Name", direction: right, type: Edit, scope: payment_editor, anchor_exact: true}
+
+payment.description:
+  - {tier: uia, type: Edit, name: "Description", scope: payment_editor}
+  - {tier: anchor, anchor_text: "Description", direction: right, type: Edit, scope: payment_editor}
+
+payment.account:                         # left blank
+  - {tier: uia, type: Edit, name_contains: "Account", scope: payment_editor}
+  - {tier: anchor, anchor_text: "Account", direction: right, type: Edit, scope: payment_editor}
+
+payment.code_combo:                      # spec 2.10.4
+  - {tier: uia, type: ComboBox, scope: payment_editor, pick: largest}
+  - {tier: anchor, anchor_text: "code", direction: right, type: ComboBox, scope: payment_editor}
+
+payment.cash_discount:                   # spec 2.10.5
+  - {tier: uia, type: Edit, name_contains: "Cash discount", scope: payment_editor}
+  - {tier: anchor, anchor_text: "Cash discount", direction: right, type: Edit, scope: payment_editor}
+
+payment.discount_days:
+  - {tier: uia, type: Edit, name_contains: "Discount Days", scope: payment_editor}
+  - {tier: anchor, anchor_text: "Discount Days", direction: right, type: Edit, scope: payment_editor}
+
+payment.net_days:
+  - {tier: uia, type: Edit, name_contains: "Net Days", scope: payment_editor}
+  - {tier: anchor, anchor_text: "Net Days", direction: right, type: Edit, scope: payment_editor}
+
+payment.set_as_standard:                 # declared so tests can assert it is never clicked
+  - {tier: uia, type: Button, name_contains: "standard", scope: payment_list}
+
+# ===== Data > VATs =========================================================
+vat.list_search:                         # spec 3.4
+  - {tier: anchor, anchor_text: "Search", direction: right, type: Edit, scope: vat_part}
+  - {tier: uia, type: Edit, scope: vat_part, pick: topmost}
+
+vat.list_table:
+  - {tier: uia, type: Table, scope: vat_list, pick: largest}
+  - {tier: uia, type: Pane, leaf: true, scope: vat_list, pick: largest}
+
+vat.list_new:                            # spec 3.6 - the green + above the list
+  - {tier: uia, type: Button, name_contains: "Create", scope: vat_part, pick: leftmost}
+  - {tier: uia, type: Button, name_contains: "New", scope: vat_part, pick: leftmost}
+  - {tier: uia, type: Button, scope: vat_part, pick: leftmost}
+  - {tier: template, image: "icons/new_green_plus.png", scope: vat_part, pick: topmost, threshold: 0.86}
+
+# The VAT editor opens as its own part called "New TAX Rate" (Fakturama uses
+# "TAX Rate" in the editor and "VATs" in the list).
+vat_editor:
+  - {tier: uia, type: Pane, name: "New TAX Rate", scope: app}
+  - {tier: uia, type: Pane, name_contains: "TAX Rate", scope: app, pick: largest}
+
+vat.name:
+  - {tier: anchor, anchor_text: "Name", direction: right, type: Edit, scope: vat_editor, anchor_exact: true}
+
+vat.description:
+  - {tier: anchor, anchor_text: "Description", direction: right, type: Edit, scope: vat_editor}
+
+vat.code_combo:                          # "VAT code (E-Invoice)" - keep S (Standard rate)
+  - {tier: anchor, anchor_text: "VAT code (E-Invoice)", direction: right, type: ComboBox, scope: vat_editor}
+  - {tier: anchor, anchor_text: "E-Invoice", direction: right, type: ComboBox, scope: vat_editor}
+  - {tier: uia, type: ComboBox, scope: vat_editor, pick: largest}
+
+vat.value:
+  - {tier: anchor, anchor_text: "Value", direction: right, type: Edit, scope: vat_editor, anchor_exact: true}
+
+# ===== product editor ======================================================
+product.item_number:                     # spec 3.8
+  - {tier: uia, type: Edit, name_contains: "Item Number", scope: product_editor}
+  - {tier: anchor, anchor_text: "Item Number", direction: right, type: Edit, scope: product_editor}
+
+product.name:
+  - {tier: uia, type: Edit, name: "Name", scope: product_editor}
+  - {tier: anchor, anchor_text: "Name", direction: right, type: Edit, scope: product_editor, anchor_exact: true}
+
+product.description:
+  - {tier: uia, type: Edit, name: "Description", scope: product_editor}
+  - {tier: anchor, anchor_text: "Description", direction: right, type: Edit, scope: product_editor}
+
+product.price_gross:                     # spec 3.9
+  - {tier: uia, type: Edit, name_contains: "Price (gross)", scope: product_editor}
+  - {tier: anchor, anchor_text: "Price (gross)", direction: right, type: Edit, scope: product_editor}
+  - {tier: anchor, anchor_text: "gross", direction: right, type: Edit, scope: product_editor}
+
+product.cost_price:                      # spec 3.10 - 0.00
+  - {tier: uia, type: Edit, name_contains: "cost price", scope: product_editor}
+  - {tier: anchor, anchor_text: "cost price", direction: right, type: Edit, scope: product_editor}
+
+product.vat_combo:
+  - {tier: uia, type: ComboBox, name_contains: "VAT", scope: product_editor}
+  - {tier: anchor, anchor_text: "VAT", direction: right, type: ComboBox, scope: product_editor}
+
+product.stock:                           # spec 3.10 - 0.00
+  - {tier: uia, type: Edit, name_contains: "Stock", scope: product_editor}
+  - {tier: anchor, anchor_text: "Stock", direction: right, type: Edit, scope: product_editor}
+
+# ===== Data > Documents ====================================================
+# The list body is a custom-drawn canvas; only tier-4 OCR can read its rows.
+documents.table:                         # spec 4.5 / 5.5
+  - {tier: uia, type: Table, scope: documents_list, pick: largest}
+  - {tier: uia, type: Pane, leaf: true, scope: documents_list, pick: largest}
+
+documents.search:
+  - {tier: anchor, anchor_text: "Search", direction: right, type: Edit, scope: documents_list}
+  - {tier: uia, type: Edit, scope: documents_list, pick: topmost}
+
+# ===== invoice editor ======================================================
+invoice.no_field:                        # spec 5.1 - read only
+  - {tier: anchor, anchor_text: "No.", direction: right, type: Edit, scope: invoice_editor, anchor_exact: true, enabled_only: false}
+
+invoice.custref_field:
+  - {tier: uia, type: Edit, name: "Cust.Ref.", scope: invoice_editor}
+  - {tier: anchor, anchor_text: "Cust.Ref.", direction: right, type: Edit, scope: invoice_editor}
+
+# The Invoice's payment row reads:
+#     [x] paid   [Bank Transfer v]   at [ 19 Sep 2026 ]   Value [ 678.30 ]
+# and only the checkbox and the Value box carry names - the method combo and
+# the date are unnamed, so both are found from the labels beside them. The date
+# and Value fields do not exist at all until "paid" is ticked, which is why
+# they could not be calibrated until a run first got this far.
+invoice.payment_combo:                   # spec 5.2
+  - {tier: uia, type: ComboBox, name_contains: "Payment", scope: invoice_editor}
+  - {tier: anchor, anchor_text: "paid", direction: right, type: ComboBox, scope: invoice_editor, anchor_exact: true}
+  - {tier: uia, type: ComboBox, scope: invoice_editor, pick: leftmost}
+
+invoice.paid_check:                      # spec 5.3
+  - {tier: uia, type: CheckBox, name: "paid", scope: invoice_editor}
+  - {tier: uia, type: CheckBox, name_contains: "paid", scope: invoice_editor}
+  - {tier: anchor, anchor_text: "paid", direction: left, type: CheckBox, scope: invoice_editor}
+
+invoice.payment_date:                    # spec 5.3 - the box after "at"
+  - {tier: uia, type: Edit, name_contains: "Payment date", scope: invoice_editor}
+  - {tier: anchor, anchor_text: "at", direction: right, type: Edit, scope: invoice_editor, anchor_exact: true}
+
+invoice.paid_value:                      # spec 5.3
+  - {tier: uia, type: Edit, name: "Value", scope: invoice_editor}
+  - {tier: anchor, anchor_text: "Value", direction: right, type: Edit, scope: invoice_editor}
+
+invoice.total_gross_label:               # read-only: see order.total_net_label
+  - {tier: uia, type: Edit, name: "Total", scope: invoice_editor, enabled_only: false}
+  - {tier: anchor, anchor_text: "Total", direction: right, type: Edit, scope: invoice_editor, anchor_exact: true, enabled_only: false}

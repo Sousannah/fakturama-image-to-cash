@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "f2c"
+version = "0.1.0"
+description = "Fakturama Image-to-Cash automation: order image -> saved, verified Order + linked Invoice"
+requires-python = ">=3.9"
+
+[project.scripts]
+f2c = "f2c.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"f2c.ui" = ["selectors.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
