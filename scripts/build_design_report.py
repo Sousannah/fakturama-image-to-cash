@@ -566,8 +566,9 @@ def build(out: Path, run_dir: Path) -> Path:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", type=Path,
-                    default=Path(r"D:\Sousannah") / "Fakturama_Design_And_Implementation_Report.docx")
+    # Default into the repository: the documents are deliverables, so they
+    # belong with the code they are generated from. Use --out for anywhere else.
+    ap.add_argument("--out", type=Path, default=REPO_ROOT / "docs" / "Fakturama_Design_And_Implementation_Report.docx")
     ap.add_argument("--run", type=Path, default=None)
     args = ap.parse_args()
 

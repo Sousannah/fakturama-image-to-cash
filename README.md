@@ -56,11 +56,15 @@ to the database.</b></p>
 |---|---|---|
 | ✔ | **Source code with a clear structure in a Git repo** | This repository — `src/f2c/` split into `extract` / `gui` / `ui` / `flow` / `verify`, plus `tests/` and `scripts/`. See [project layout](#️-project-layout). |
 | ✔ | **Setup instructions: dependencies and how to run the automation against Fakturama** | [Quick start](#-quick-start), and `f2c doctor` checks the whole environment before you run anything. |
-| ✔ | **Annotated screenshots or a short recording** | **Both.** 23 annotated step figures in [`docs/screenshots/run/`](docs/screenshots/run) and collected into `Fakturama_Annotated_Screenshots.docx`; a 90-second recording in [`docs/recording/`](docs/recording). |
+| ✔ | **Annotated screenshots or a short recording** | **Both.** 23 annotated step figures in [`docs/screenshots/run/`](docs/screenshots/run), collected into [`docs/Fakturama_Annotated_Screenshots.docx`](docs/Fakturama_Annotated_Screenshots.docx); a 90-second recording in [`docs/recording/`](docs/recording). |
 | ✔ | **README** | This file. |
 
-Two further documents are generated from the repository and from a run report, so their
-figures cannot drift from what the code actually did:
+Two further documents go beyond the brief. Both are **generated from the repository and from a run
+report**, so their figures — step counts, tier usage, document numbers, test counts, even the status
+drawn on the stages diagram — cannot drift from what the code actually did.
+
+- [**Design & implementation report**](docs/Fakturama_Design_And_Implementation_Report.docx) — 15 pages. Rebuild with `python scripts/build_design_report.py`
+- [**Code walkthrough**](docs/Fakturama_Code_Walkthrough.docx) — 19 pages, file by file. Rebuild with `python scripts/build_code_walkthrough.py`
 
 > **Written question — *"If you had 3 more hours, what would you do?"*** → [answered at the end](#-if-i-had-3-more-hours).
 
@@ -480,10 +484,20 @@ All 23 are in [`docs/screenshots/run/`](docs/screenshots/run). Regenerate them, 
 with:
 
 ```bash
-python scripts/capture_demo.py           # run the demo, record it, capture the screens
-python scripts/build_screenshot_guide.py # the annotated walk-through
-python scripts/build_design_report.py    # the design & implementation report
-python scripts/build_code_walkthrough.py # the code walkthrough
+python scripts/capture_demo.py             # run the demo, record it, capture the screens
+python scripts/build_screenshot_guide.py   # the annotated walk-through
+python scripts/build_design_report.py      # the design & implementation report
+python scripts/build_code_walkthrough.py   # the code walkthrough
+```
+
+The diagrams are generated from the same run report, so a stage cannot be drawn as working when the
+last run says otherwise:
+
+```bash
+python scripts/make_stages_diagram.py      # docs/diagrams/04_stages.png
+python scripts/make_write_diagram.py       # docs/diagrams/07_write_value.png
+python scripts/make_frontend_diagram.py    # docs/diagrams/08_frontend.png
+python scripts/make_banner.py              # docs/banner.png
 ```
 
 ---
@@ -641,7 +655,16 @@ rather than guessing, for:
 
 <br>
 
-Each was caught against the live application and is commented at the fix site.
+The first of these shaped the whole write path — every value the automation types goes through this
+loop, and a write is not finished until it has been read back:
+
+<div align="center">
+<img src="docs/diagrams/07_write_value.png" alt="How one value is written and verified" width="94%">
+</div>
+
+<br>
+
+Each of these was caught against the live application and is commented at the fix site.
 
 | Symptom | Cause | Fix |
 |---|---|---|

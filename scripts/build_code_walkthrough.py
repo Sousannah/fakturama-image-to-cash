@@ -640,6 +640,13 @@ def build(out: Path, run_dir: Path) -> Path:
 
     # ===================================================================== #
     d.h1("11. The bugs that shaped the code")
+    d.p(
+        "The first one shaped the entire write path. Every value the automation types goes through "
+        "the loop below, and a write is not considered finished until it has been read back."
+    )
+    d.image(DIAGRAMS / "07_write_value.png",
+            "Writing one value: bring the application forward, resolve, type with real keys, read back.",
+            1.0)
     d.p("Each of these was found against the live application, and each is commented at its fix site.")
     d.table(
         ["Symptom", "Cause", "What changed"],
@@ -685,8 +692,9 @@ def build(out: Path, run_dir: Path) -> Path:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", type=Path,
-                    default=Path(r"D:\Sousannah") / "Fakturama_Code_Walkthrough.docx")
+    # Default into the repository: the documents are deliverables, so they
+    # belong with the code they are generated from. Use --out for anywhere else.
+    ap.add_argument("--out", type=Path, default=REPO_ROOT / "docs" / "Fakturama_Code_Walkthrough.docx")
     ap.add_argument("--run", type=Path, default=None)
     args = ap.parse_args()
 
