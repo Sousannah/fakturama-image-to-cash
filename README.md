@@ -62,9 +62,6 @@ to the database.</b></p>
 Two further documents are generated from the repository and from a run report, so their
 figures cannot drift from what the code actually did:
 
-* **Design & implementation report** — `python scripts/build_design_report.py`
-* **Code walkthrough** — `python scripts/build_code_walkthrough.py`
-
 > **Written question — *"If you had 3 more hours, what would you do?"*** → [answered at the end](#-if-i-had-3-more-hours).
 
 ---
